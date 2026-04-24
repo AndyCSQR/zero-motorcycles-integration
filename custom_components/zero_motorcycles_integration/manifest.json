@@ -1,12 +1,10 @@
 {
   "domain": "zero_motorcycles_integration",
-  "name": "Zero Motorcycles Integration",
-  "codeowners": [
-    "@hanscappelle"
-  ],
+  "name": "Zero Motorcycles (MFA)",
+  "codeowners": ["@hanscappelle"],
   "config_flow": true,
-  "documentation": "https://github.com/hanscappelle/zero-motorcycles-integration",
+  "documentation": "https://github.com/YOURUSERNAME/zero-motorcycles-mfa",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/hanscappelle/zero-motorcycles-integration/issues",
-  "version": "0.5.2"
+  "issue_tracker": "https://github.com/YOURUSERNAME/zero-motorcycles-mfa/issues",
+  "version": "0.6.0-mfa"
 }
