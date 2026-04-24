@@ -1,7 +1,11 @@
 from homeassistant import config_entries
 import voluptuous as vol
-from .api import ZeroApiClient, ZeroApiClientAuthenticationError
+import logging
+
+from .api import ZeroApiClient, ZeroApiClientAuthenticationError, ZeroApiClientError
 from .const import DOMAIN
+
+_LOGGER = logging.getLogger(__name__)
 
 class ZeroConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 2
@@ -11,19 +15,27 @@ class ZeroConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             email = user_input["email"]
             password = user_input["password"]
-            mfa_code = user_input.get("mfa_code", "")
+            mfa_code = user_input["mfa_code"]
 
             client = ZeroApiClient(email, password)
+
             try:
                 await client.async_login(mfa_code)
+                
+                _LOGGER.info("✅ MFA Login geslaagd! Integratie wordt toegevoegd.")
+                
                 return self.async_create_entry(
                     title=f"Zero Motorcycles ({email})",
                     data={"email": email, "password": password}
                 )
+
             except ZeroApiClientAuthenticationError:
                 errors["base"] = "invalid_auth"
-            except Exception as e:
-                _LOGGER.exception(e)
+            except ZeroApiClientError as err:
+                _LOGGER.error("Connectie error: %s", err)
+                errors["base"] = "cannot_connect"
+            except Exception as err:
+                _LOGGER.exception("Onverwachte fout: %s", err)
                 errors["base"] = "unknown"
 
         return self.async_show_form(
@@ -35,6 +47,6 @@ class ZeroConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }),
             errors=errors,
             description_placeholders={
-                "mfa_info": "Vul de code in die je via email van Zero krijgt (open de app even om de code op te vragen)."
+                "mfa_info": "Gebruik een verse MFA-code uit je email (via de Zero app)."
             }
         )
