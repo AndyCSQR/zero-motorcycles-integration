@@ -1,8 +1,9 @@
 {
-    "name": "Zero Motorcycles Integration",
-    "filename": "zero_motorcycles_integration.zip",
-    "hide_default_branch": true,
-    "homeassistant": "2023.3.0",
-    "render_readme": true,
-    "zip_release": true
+  "name": "Zero Motorcycles (MFA)",
+  "content_in_root": false,
+  "homeassistant": "2024.6.0",
+  "persistent_directory": null,
+  "render_readme": true,
+  "filename": "custom_components/zero_motorcycles_integration",
+  "zip_release": false
 }
