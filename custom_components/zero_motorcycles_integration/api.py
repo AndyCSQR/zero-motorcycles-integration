@@ -1,96 +1,98 @@
-"""Mongol or starcom API used by Zero Motorcycles for sharing data.
-
-For more details about this starcom API please refer to
-https://bitbucket.org/cappelleh/zengo-android/src/master/
-"""
-
-from __future__ import annotations
-
-import asyncio
-import socket
-
 import aiohttp
-import async_timeout
+import logging
+from typing import Optional, Dict, Any
+from homeassistant.exceptions import HomeAssistantError
 
-
-class ZeroApiClientError(Exception):
-    """Exception to indicate a general API error."""
-
-
-class ZeroApiClientCommunicationError(ZeroApiClientError):
-    """Exception to indicate a communication error."""
-
-
-class ZeroApiClientAuthenticationError(ZeroApiClientError):
-    """Exception to indicate an authentication error."""
-
+_LOGGER = logging.getLogger(__name__)
 
 class ZeroApiClient:
-    """Starcom API used by Zero Motorcycles for sharing data."""
+    def __init__(self, email: str, password: str):
+        self.email = email
+        self.password = password
+        self.token: Optional[str] = None
+        self.sid: Optional[str] = None
+        self.refresh_token: Optional[str] = None
+        self.base_url = "https://api-eu-cypherstore-prod.zeromotorcycles.com"
 
-    def __init__(
-        self,
-        username: str,
-        password: str,
-        session: aiohttp.ClientSession,
-    ) -> None:
-        """Set user credentials for API."""
-        self._username = username
-        self._password = password
-        self._session = session
+    async def async_login(self, mfa_code: str) -> bool:
+        """Login met MFA (2FA via email)."""
+        url = f"{self.base_url}/dev/users/2falogin"
+        data = {
+            "email": self.email,
+            "password": self.password,
+            "code": mfa_code,
+            "deviceType": "iOS",
+            "appVersion": "2.13.0"
+        }
 
-    async def async_get_units(self) -> any:
-        """Get available unit numbers for given credentials from API."""
-        return await self._api_wrapper(
-            method="get",
-            url="https://mongol.brono.com/mongol/api.php?commandname=get_units&format=json&user="
-            + self._username
-            + "&pass="
-            + self._password,
-        )
+        headers = {
+            "User-Agent": "nextgen/2.13.0 (com.zeromotorcycles.nextgen; build:21; iOS 18.0) Alamofire/5.10.2",
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "*/*"
+        }
 
-    async def async_get_last_transmit(self, unitnumber) -> any:
-        """Get available available data from API."""
-        return await self._api_wrapper(
-            method="get",
-            url="https://mongol.brono.com/mongol/api.php?commandname=get_last_transmit&format=json&user="
-            + self._username
-            + "&pass="
-            + self._password
-            + "&unitnumber="
-            + unitnumber,
-        )
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, data=data, headers=headers) as resp:
+                if resp.status != 200:
+                    text = await resp.text()
+                    _LOGGER.error("Login HTTP %s: %s", resp.status, text)
+                    raise ZeroApiClientAuthenticationError("Login mislukt (HTTP error)")
 
-    async def _api_wrapper(
-        self,
-        method: str,
-        url: str,
-        data: dict | None = None,
-        headers: dict | None = None,
-    ) -> any:
-        """Get information from the API."""
-        try:
-            async with async_timeout.timeout(10):
-                response = await self._session.request(
-                    method=method,
-                    url=url,
-                    headers=headers,
-                    json=data,
-                )
-                if response.status in (401, 403, 601):
-                    raise ZeroApiClientAuthenticationError(
-                        "Invalid credentials",
-                    )
-                response.raise_for_status()
-                return await response.json()
+                result: Dict[str, Any] = await resp.json()
+                if result.get("result") != "ok":
+                    _LOGGER.error("Login API error: %s", result)
+                    raise ZeroApiClientAuthenticationError("Ongeldige MFA-code of credentials")
 
-        except asyncio.TimeoutError as exception:
-            raise ZeroApiClientCommunicationError(
-                "Timeout error fetching information",
-            ) from exception
-        except (aiohttp.ClientError, socket.gaierror) as exception:
-            raise ZeroApiClientCommunicationError(
-                "Error fetching information",
-            ) from exception
-        except Exception as exception:  # pylint: disable=broad-except
-            raise ZeroApiClientError("Something really wrong happened!") from exception
+                self.token = result.get("token")
+                self.sid = result.get("sid")
+                self.refresh_token = result.get("refreshToken")
+                _LOGGER.info("✅ Zero login succesvol - token ontvangen")
+                return True
+
+    async def async_get_units(self) -> Dict:
+        return await self._starcom_call({"command": "get_units"})
+
+    async def async_get_last_transmit(self, unitnumber: str) -> Dict:
+        return await self._starcom_call({
+            "command": "get_last_transmit",
+            "unitnumber": unitnumber
+        })
+
+    async def _starcom_call(self, command_payload: Dict) -> Dict:
+        """Placeholder voor encrypted calls."""
+        if not self.token:
+            raise ZeroApiClientAuthenticationError("Geen token aanwezig")
+
+        url = f"{self.base_url}/starcom/v1"
+
+        payload = {
+            "token": self.token,
+            "sid": self.sid,
+            **command_payload
+        }
+
+        headers = {
+            "User-Agent": "nextgen/2.13.0 (com.zeromotorcycles.nextgen; build:21; iOS 18.0) Alamofire/5.10.2",
+            "Content-Type": "application/json"
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, json=payload, headers=headers) as resp:
+                text = await resp.text()
+                _LOGGER.debug("Starcom response: %s", text[:800])
+
+                if resp.status == 200:
+                    try:
+                        return await resp.json()
+                    except Exception:
+                        return {"raw": text}
+                else:
+                    raise ZeroApiClientError(f"Starcom error {resp.status}: {text[:300]}")
+
+
+class ZeroApiClientAuthenticationError(HomeAssistantError):
+    """Invalid auth or MFA."""
+
+
+class ZeroApiClientError(HomeAssistantError):
+    """General API error."""
