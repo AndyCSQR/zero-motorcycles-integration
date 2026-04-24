@@ -21,9 +21,6 @@ class ZeroConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             try:
                 await client.async_login(mfa_code)
-                
-                _LOGGER.info("✅ MFA Login geslaagd! Integratie wordt toegevoegd.")
-                
                 return self.async_create_entry(
                     title=f"Zero Motorcycles ({email})",
                     data={"email": email, "password": password}
@@ -31,11 +28,10 @@ class ZeroConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
             except ZeroApiClientAuthenticationError:
                 errors["base"] = "invalid_auth"
-            except ZeroApiClientError as err:
-                _LOGGER.error("Connectie error: %s", err)
+            except ZeroApiClientError:
                 errors["base"] = "cannot_connect"
-            except Exception as err:
-                _LOGGER.exception("Onverwachte fout: %s", err)
+            except Exception as e:
+                _LOGGER.exception(e)
                 errors["base"] = "unknown"
 
         return self.async_show_form(
@@ -46,7 +42,5 @@ class ZeroConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required("mfa_code"): str,
             }),
             errors=errors,
-            description_placeholders={
-                "mfa_info": "Gebruik een verse MFA-code uit je email (via de Zero app)."
-            }
+            description_placeholders={"mfa_info": "Verse code uit je email (via Zero app)."}
         )
