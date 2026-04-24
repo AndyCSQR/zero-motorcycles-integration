@@ -15,30 +15,41 @@ class ZeroApiClient:
         self.base_url = "https://api-eu-cypherstore-prod.zeromotorcycles.com"
 
     async def async_login(self, mfa_code: str) -> bool:
-        """Login met MFA (2FA via email)."""
+        """Login met MFA via email-code (verbeterde versie)."""
         url = f"{self.base_url}/dev/users/2falogin"
+        
         data = {
             "email": self.email,
             "password": self.password,
             "code": mfa_code,
             "deviceType": "iOS",
-            "appVersion": "2.13.0"
+            "appVersion": "2.13.0",
+            "deviceId": "HA-Zero-Integration-2026"
         }
 
         headers = {
             "User-Agent": "nextgen/2.13.0 (com.zeromotorcycles.nextgen; build:21; iOS 18.0) Alamofire/5.10.2",
             "Content-Type": "application/x-www-form-urlencoded",
-            "Accept": "*/*"
+            "Accept": "*/*",
+            "Accept-Language": "en-BE,en;q=0.9",
+            "Connection": "keep-alive"
         }
 
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=30)
+
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(url, data=data, headers=headers) as resp:
+                if resp.status == 504:
+                    _LOGGER.error("Zero server gaf 504 Gateway Timeout")
+                    raise ZeroApiClientError("Zero server is momenteel traag (504). Probeer over 1 minuut opnieuw.")
+
                 if resp.status != 200:
                     text = await resp.text()
-                    _LOGGER.error("Login HTTP %s: %s", resp.status, text)
-                    raise ZeroApiClientAuthenticationError("Login mislukt (HTTP error)")
+                    _LOGGER.error("Login HTTP %s: %s", resp.status, text[:400])
+                    raise ZeroApiClientAuthenticationError(f"Login mislukt: {resp.status}")
 
                 result: Dict[str, Any] = await resp.json()
+                
                 if result.get("result") != "ok":
                     _LOGGER.error("Login API error: %s", result)
                     raise ZeroApiClientAuthenticationError("Ongeldige MFA-code of credentials")
@@ -46,7 +57,8 @@ class ZeroApiClient:
                 self.token = result.get("token")
                 self.sid = result.get("sid")
                 self.refresh_token = result.get("refreshToken")
-                _LOGGER.info("✅ Zero login succesvol - token ontvangen")
+                
+                _LOGGER.info("✅ Zero MFA login succesvol - token ontvangen")
                 return True
 
     async def async_get_units(self) -> Dict:
@@ -59,7 +71,7 @@ class ZeroApiClient:
         })
 
     async def _starcom_call(self, command_payload: Dict) -> Dict:
-        """Placeholder voor encrypted calls."""
+        """Data call naar nieuwe API (nog zonder encryptie)."""
         if not self.token:
             raise ZeroApiClientAuthenticationError("Geen token aanwezig")
 
@@ -79,7 +91,7 @@ class ZeroApiClient:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=payload, headers=headers) as resp:
                 text = await resp.text()
-                _LOGGER.debug("Starcom response: %s", text[:800])
+                _LOGGER.debug("Starcom/v1 response: %s", text[:600])
 
                 if resp.status == 200:
                     try:
@@ -87,11 +99,11 @@ class ZeroApiClient:
                     except Exception:
                         return {"raw": text}
                 else:
-                    raise ZeroApiClientError(f"Starcom error {resp.status}: {text[:300]}")
+                    raise ZeroApiClientError(f"Starcom error {resp.status}: {text[:400]}")
 
 
 class ZeroApiClientAuthenticationError(HomeAssistantError):
-    """Invalid auth or MFA."""
+    """Invalid credentials or MFA."""
 
 
 class ZeroApiClientError(HomeAssistantError):
