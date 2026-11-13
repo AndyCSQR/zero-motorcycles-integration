@@ -1,7 +1,7 @@
 """Custom integration to integrate zero_motorcycles_integration with Home Assistant.
 
 For more details about this integration, please refer to
-https://github.com/hanscappelle/zero-motorcycles-integration
+https://github.com/AndyCSQR/zero-motorcycles-integration
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import ZeroApiClient
-from .const import DOMAIN, LOGGER
+from .const import CONF_REFRESH_TOKEN, CONF_SID, CONF_TOKEN, DOMAIN, LOGGER
 from .coordinator import ZeroCoordinator
 
 PLATFORMS: list[Platform] = [
@@ -34,31 +34,39 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     username = entry.data.get(CONF_USERNAME)
     LOGGER.debug("Loaded %s: %s", CONF_USERNAME, username)
     password = entry.data.get(CONF_PASSWORD)
-    LOGGER.debug("Loadded %s: ********", CONF_PASSWORD)
+    LOGGER.debug("Loaded %s: ********", CONF_PASSWORD)
+
+    # Retrieve stored tokens
+    token = entry.data.get(CONF_TOKEN)
+    sid = entry.data.get(CONF_SID)
+    refresh_token = entry.data.get(CONF_REFRESH_TOKEN)
 
     # Initialize the HASS structure
     hass.data.setdefault(DOMAIN, {})
+    client = ZeroApiClient(
+        username=username,
+        password=password,
+        session=async_get_clientsession(hass),
+    )
+
+    # Restore tokens if available
+    if token and sid and refresh_token:
+        client.restore_tokens(token, sid, refresh_token)
+        LOGGER.debug("Restored tokens from config entry")
+    else:
+        LOGGER.warning("No tokens found, reauthentication may be required")
+
     hass.data[DOMAIN][entry.entry_id] = coordinator = ZeroCoordinator(
         hass=hass,
-        client=ZeroApiClient(
-            username=username,
-            password=password,
-            session=async_get_clientsession(hass),
-        ),
+        client=client,
     )
 
     # Initiate the coordinator. This method will also make sure to login to the API
-
     # https://developers.home-assistant.io/docs/integration_fetching_data#coordinated-single-api-poll-for-data-for-all-entities
     await coordinator.async_config_entry_first_refresh()
 
     # configure all sensors
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    # alternative with more readable for loop
-    # for platform in PLATFORMS:
-    #    hass.async_add_job(
-    #        hass.config_entries.async_forward_entry_setup(entry, platform)
-    #    )
 
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 

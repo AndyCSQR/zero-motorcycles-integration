@@ -6,6 +6,7 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
+from homeassistant.helpers.entity import DeviceInfo
 
 from .const import DOMAIN, LOGGER
 from .coordinator import ZeroCoordinator
@@ -92,15 +93,26 @@ class ZeroBinarySensor(ZeroEntity, BinarySensorEntity):
 
         # set unit number for unit reference here, this is used as a key in received data
         self.unitnumber = unitnumber
-        self.sensor_name = sensor_name  # used for data point refererence
+        self.sensor_name = sensor_name  # used for data point reference
 
         # had to create unique IDs per sensor here, using key.name
         self._attr_unique_id = (
             entity_description.key + "." + unitnumber + "." + entity_description.name
         )
-        self._name = unitnumber + " " + entity_description.name
-        # make names unique per unit
-        # entity_description.name = (sensor_name + "." + unitnumber)
+        self._name = f"Zero {unitnumber} {entity_description.name}"
+
+        # Per-unit device info
+        unit_info = next(
+            (u for u in coordinator.units if u.get("unitnumber") == unitnumber), {}
+        )
+        self._attr_device_info = DeviceInfo(
+            identifiers={("zero_motorcycles_integration", unitnumber)},
+            name=f"Zero {unitnumber}",
+            model=f"Zero (unit model {unit_info.get('unitmodel', '?')})",
+            manufacturer="Zero Motorcycles",
+            serial_number=unit_info.get("name", unitnumber),
+        )
+
         self.entity_description = entity_description
 
     @property
@@ -111,11 +123,11 @@ class ZeroBinarySensor(ZeroEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool:
         """Return true if the binary_sensor is on."""
-        # sensor = self.entity_description.name
         value = self.coordinator.data[self.unitnumber][0][self.sensor_name]
         LOGGER.debug(
-            "Sensor value for %s is %s",
+            "Binary sensor value for %s is %s",
             self.unique_id,
             value,
         )
-        return value
+        # API returns '0'/'1' strings or 0/1 integers
+        return bool(int(value)) if value not in ("", None) else False

@@ -1,0 +1,34 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Zero Motorcycles",
+                "description": "Enter your Zero account credentials. A one-time code will be sent to your email.",
+                "data": {
+                    "username": "Email",
+                    "password": "Password"
+                }
+            },
+            "mfa": {
+                "title": "Zero Motorcycles - Two-Factor Authentication",
+                "description": "We sent a one-time code to {username}. Enter the code below.",
+                "data": {
+                    "mfa_code": "One-time code"
+                }
+            }
+        },
+        "error": {
+            "auth": "Invalid credentials or user not registered.",
+            "connection": "Could not connect to Zero Motorcycles servers.",
+            "unknown": "An unexpected error occurred.",
+            "invalid_code": "Invalid or expired one-time code. Check your email and try again."
+        },
+        "abort": {
+            "already_configured": "This account is already configured.",
+            "reauth_successful": "Re-authentication successful.",
+            "auth_failed": "Authentication failed.",
+            "unknown": "An unexpected error occurred during re-authentication."
+        }
+    },
+    "options": {}
+}

@@ -7,6 +7,7 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
 )
 from homeassistant.const import UnitOfLength, UnitOfSpeed, UnitOfElectricPotential, UnitOfTime, PERCENTAGE
+from homeassistant.helpers.entity import DeviceInfo
 
 from .const import DOMAIN, LOGGER
 from .coordinator import ZeroCoordinator
@@ -137,16 +138,26 @@ class ZeroSensor(ZeroEntity, SensorEntity):
 
         # set unit number for unit reference here, this is used as a key in received data
         self.unitnumber = unitnumber
-        self.sensor_name = sensor_name  # used for data point refererence
+        self.sensor_name = sensor_name  # used for data point reference
 
         # had to create unique IDs per sensor here, using key.name
         self._attr_unique_id = (
             entity_description.key + "." + unitnumber + "." + entity_description.name
         )
-        self._name = unitnumber + " " + entity_description.name
-        # make names unique per unit
-        # entity_description.name = sensor_name + "." + unitnumber
-        # entity_description.key = "unit." + unitnumber + "." + entity_description.name
+        self._name = f"Zero {unitnumber} {entity_description.name}"
+
+        # Per-unit device info so each bike shows as its own device
+        unit_info = next(
+            (u for u in coordinator.units if u.get("unitnumber") == unitnumber), {}
+        )
+        self._attr_device_info = DeviceInfo(
+            identifiers={("zero_motorcycles_integration", unitnumber)},
+            name=f"Zero {unitnumber}",
+            model=f"Zero (unit model {unit_info.get('unitmodel', '?')})",
+            manufacturer="Zero Motorcycles",
+            serial_number=unit_info.get("name", unitnumber),
+        )
+
         self.entity_description = entity_description
 
     @property
@@ -155,13 +166,40 @@ class ZeroSensor(ZeroEntity, SensorEntity):
         return self._name
 
     @property
-    def native_value(self) -> str:
+    def native_value(self):
         """Return the native value of the sensor."""
-        # value = self.coordinator.data[self.unitnumber][0][sensor]
         value = self.coordinator.data[self.unitnumber][0][self.sensor_name]
         LOGGER.debug(
-            "Sensor value for %s is %s",
+            "Sensor value for %s is %s (type: %s)",
             self.unique_id,
             value,
+            type(value).__name__,
         )
+
+        # Convert values based on sensor type
+        sensor_name = self.sensor_name
+
+        # Numeric sensors that may come as strings
+        numeric_fields = {
+            "mileage", "velocity", "main_voltage", "altitude",
+            "chargingtimeleft", "satellites", "heading",
+        }
+        if sensor_name in numeric_fields:
+            try:
+                # Try float first, fall back to string if empty
+                if value == "" or value is None:
+                    return None
+                return float(value)
+            except (ValueError, TypeError):
+                return None
+
+        # Integer fields
+        int_fields = {"soc", "battery"}
+        if sensor_name in int_fields:
+            try:
+                return int(value)
+            except (ValueError, TypeError):
+                return None
+
+        # String fields
         return value

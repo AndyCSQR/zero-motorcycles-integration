@@ -2,6 +2,7 @@
 
 from homeassistant.components.device_tracker.const import SourceType
 from homeassistant.components.device_tracker.config_entry import TrackerEntity
+from homeassistant.helpers.entity import DeviceInfo
 
 from .const import DOMAIN, LOGGER
 from .coordinator import ZeroCoordinator
@@ -9,7 +10,7 @@ from .entity import ZeroEntity
 
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
-    """Set up device tracket by config_entry."""
+    """Set up device tracker by config_entry."""
     coordinator = hass.data[DOMAIN][config_entry.entry_id]
     entities = []
     for unit in coordinator.units:
@@ -30,10 +31,25 @@ class ZeroTrackerEntity(ZeroEntity, TrackerEntity):
         coordinator: ZeroCoordinator,
         unitnumber: str,
     ) -> None:
-        """Initialize the sensor class."""
+        """Initialize the tracker class."""
         super().__init__(coordinator)
 
         self.unit_number = unitnumber
+        self._attr_unique_id = f"zero_motorcycles_integration.{unitnumber}.tracker"
+        self._attr_name = f"Zero {unitnumber}"
+
+        # Per-unit device info
+        unit_info = next(
+            (u for u in coordinator.units if u.get("unitnumber") == unitnumber), {}
+        )
+        self._attr_device_info = DeviceInfo(
+            identifiers={("zero_motorcycles_integration", unitnumber)},
+            name=f"Zero {unitnumber}",
+            model=f"Zero (unit model {unit_info.get('unitmodel', '?')})",
+            manufacturer="Zero Motorcycles",
+            serial_number=unit_info.get("name", unitnumber),
+        )
+
         LOGGER.debug("init tracker for %s", self.unit_number)
 
     @property

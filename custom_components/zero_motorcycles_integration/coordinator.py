@@ -24,7 +24,7 @@ class ZeroCoordinator(DataUpdateCoordinator):
     """Class to manage fetching data from API."""
 
     config_entry: ConfigEntry
-    units = {}  # all units fetched
+    units: list[dict] = []  # all units fetched
 
     def __init__(
         self,
